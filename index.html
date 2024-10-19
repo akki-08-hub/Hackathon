@@ -1,0 +1,168 @@
+ from flask import Flask, jsonify, request
+from flask_sqlalchemy import SQLAlchemy
+from datetime import datetime
+from flask_bcrypt import Bcrypt
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///university.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['JWT_SECRET_KEY'] = 'your_jwt_secret_key'  # Change this to a secure key
+db = SQLAlchemy(app)
+bcrypt = Bcrypt(app)
+jwt = JWTManager(app)
+
+# User Model
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(150), unique=True, nullable=False)
+    password = db.Column(db.String(200), nullable=False)
+    role = db.Column(db.String(50), nullable=False)  # 'student', 'admin'
+
+    def _repr_(self):
+        return f"<User {self.username}>"
+
+# Course Model
+class Course(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    is_theory = db.Column(db.Boolean, nullable=False)
+    max_students = db.Column(db.Integer, nullable=False)
+
+# Teacher Model
+class Teacher(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    research_projects = db.Column(db.String(500))
+    patents = db.Column(db.String(500))
+    academic_background = db.Column(db.String(500))
+
+    def _repr_(self):
+        return f"<Teacher {self.name}>"
+
+# TeacherProfile Model
+class TeacherProfile(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('teacher.id'), nullable=False)
+    rating = db.Column(db.Float, nullable=False)
+    year = db.Column(db.Integer, nullable=False)
+    feedbacks = db.relationship('Feedback', backref='profile', lazy=True)
+
+# Feedback Model
+class Feedback(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    profile_id = db.Column(db.Integer, db.ForeignKey('teacher_profile.id'), nullable=False)
+    comments = db.Column(db.String(500), nullable=False)
+    rating = db.Column(db.Integer, nullable=False)
+
+# StudentCourse Model (Junction table for Student and Course)
+class StudentCourse(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('teacher.id'), nullable=False)
+
+# Function to hash password
+def hash_password(password):
+    return bcrypt.generate_password_hash(password).decode('utf-8')
+
+# Example Endpoint to register a user
+@app.route('/register', methods=['POST'])
+def register():
+    data = request.get_json()
+    username = data['username']
+    password = data['password']
+    role = data['role']
+    
+    # Hash the password and create a new user
+    hashed_password = hash_password(password)
+    new_user = User(username=username, password=hashed_password, role=role)
+    
+    db.session.add(new_user)
+    db.session.commit()
+    
+    return jsonify({"message": f"User {username} registered successfully!"}), 201
+
+# Example Endpoint to login and get JWT token
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    username = data['username']
+    password = data['password']
+    
+    user = User.query.filter_by(username=username).first()
+    
+    # Check if user exists and the password is correct
+    if user and bcrypt.check_password_hash(user.password, password):
+        access_token = create_access_token(identity=user.id)
+        return jsonify(access_token=access_token), 200
+    else:
+        return jsonify({"error": "Invalid credentials!"}), 401
+@app.route('/')  
+def home():
+    return "welcome to the course selection and teacher assignment system!"
+# Initialize the database
+@app.before_request
+def create_tables():
+    db.create_all()
+if __name__=="__main__":
+    app.run(debug=True)
+@app.route('/select_courses', methods=['POST'])
+@jwt_required()
+def select_courses():
+    student_id = get_jwt_identity()
+    data = request.get_json()
+    
+    course_ids = data['course_ids']  # List of selected course IDs
+    teacher_ids = data['teacher_ids']  # List of corresponding selected teacher IDs
+    
+    if len(course_ids) != 6 or len(teacher_ids) != 6:
+        return jsonify({"error": "You must select exactly 4 theory and 2 lab courses!"}), 400
+    
+    for i, course_id in enumerate(course_ids):
+        course = Course.query.get(course_id)
+        teacher = Teacher.query.get(teacher_ids[i])
+        
+        if not course or not teacher:
+            return jsonify({"error": "Invalid course or teacher selected!"}), 400
+        
+        new_selection = StudentCourse(student_id=student_id, course_id=course_id, teacher_id=teacher_ids[i])
+        db.session.add(new_selection)
+    
+    db.session.commit()
+    
+    return jsonify({"message": "Courses selected successfully!"})
+@app.route('/teacher/<int:teacher_id>', methods=['GET'])
+def get_teacher_profile(teacher_id):
+    teacher = Teacher.query.get(teacher_id)
+    if not teacher:
+        return jsonify({"error": "Teacher not found!"}), 404
+    
+    # Get past 4 years ratings
+    profiles = TeacherProfile.query.filter_by(teacher_id=teacher_id).order_by(TeacherProfile.year.desc()).limit(4).all()
+    ratings = [{"year": p.year, "rating": p.rating} for p in profiles]
+    
+    return jsonify({
+        "name": teacher.name,
+        "research_projects": teacher.research_projects,
+        "patents": teacher.patents,
+        "academic_background": teacher.academic_background,
+        "ratings": ratings
+    })  
+@app.route('/teacher/<int:teacher_id>', methods=['GET'])
+def get_teacher_profile(teacher_id):
+    teacher = Teacher.query.get(teacher_id)
+    if not teacher:
+        return jsonify({"error": "Teacher not found!"}), 404
+    
+    # Get past 4 years ratings
+    profiles = TeacherProfile.query.filter_by(teacher_id=teacher_id).order_by(TeacherProfile.year.desc()).limit(4).all()
+    ratings = [{"year": p.year, "rating": p.rating} for p in profiles]
+    
+    return jsonify({
+        "name": teacher.name,
+        "research_projects": teacher.research_projects,
+        "patents": teacher.patents,
+        "academic_background": teacher.academic_background,
+        "ratings": ratings
+    })      
