@@ -1,168 +1,162 @@
- from flask import Flask, jsonify, request
-from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
-from flask_bcrypt import Bcrypt
-from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
-app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///university.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['JWT_SECRET_KEY'] = 'your_jwt_secret_key'  # Change this to a secure key
-db = SQLAlchemy(app)
-bcrypt = Bcrypt(app)
-jwt = JWTManager(app)
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Course Selection and Teacher Assignment System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            width: 90%;
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            text-align: center;
+        }
+        .course-selection {
+            margin-bottom: 30px;
+        }
+        label {
+            display: block;
+            margin: 10px 0 5px;
+        }
+        select, textarea, input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .button {
+            background-color: #5cb85c;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            display: block;
+            width: 100%;
+            text-align: center;
+        }
+        .button:hover {
+            background-color: #4cae4c;
+        }
+        .teacher-profile {
+            border: 1px solid #ddd;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+        }
+        .rating {
+            color: #f39c12;
+        }
+    </style>
+</head>
+<body>
 
-# User Model
-class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(150), unique=True, nullable=False)
-    password = db.Column(db.String(200), nullable=False)
-    role = db.Column(db.String(50), nullable=False)  # 'student', 'admin'
+<div class="container">
+    <h1>Course Selection and Teacher Assignment System</h1>
 
-    def _repr_(self):
-        return f"<User {self.username}>"
+    <!-- Course Selection Section -->
+    <div class="course-selection">
+        <h2>Select Your Courses</h2>
 
-# Course Model
-class Course(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    is_theory = db.Column(db.Boolean, nullable=False)
-    max_students = db.Column(db.Integer, nullable=False)
+        <!-- Theory Course Selection -->
+        <label for="theory-courses">Select 4 Theory Courses:</label>
+        <select id="theory-courses" multiple>
+            <option value="course1">Theory Course 1</option>
+            <option value="course2">Theory Course 2</option>
+            <option value="course3">Theory Course 3</option>
+            <option value="course4">Theory Course 4</option>
+        </select>
 
-# Teacher Model
-class Teacher(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    research_projects = db.Column(db.String(500))
-    patents = db.Column(db.String(500))
-    academic_background = db.Column(db.String(500))
+        <!-- Lab Course Selection -->
+        <label for="lab-courses">Select 2 Lab Courses:</label>
+        <select id="lab-courses" multiple>
+            <option value="lab1">Lab Course 1</option>
+            <option value="lab2">Lab Course 2</option>
+            <option value="lab3">Lab Course 3</option>
+            <option value="lab4">Lab Course 4</option>
+        </select>
 
-    def _repr_(self):
-        return f"<Teacher {self.name}>"
+        <!-- Teacher Assignment -->
+        <h3>Select a Teacher for Each Course</h3>
+        <label for="teacher1">Teacher for Theory Course 1:</label>
+        <select id="teacher1">
+            <option value="teacher1">ravikanth(Rating: 4.5, Projects: 5, Patents: 2)</option>
+            <option value="teacher2">naveen (Rating: 4.2, Projects: 3, Patents: 1)</option>
+        </select>
 
-# TeacherProfile Model
-class TeacherProfile(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('teacher.id'), nullable=False)
-    rating = db.Column(db.Float, nullable=False)
-    year = db.Column(db.Integer, nullable=False)
-    feedbacks = db.relationship('Feedback', backref='profile', lazy=True)
+        <label for="teacher2">Teacher for Theory Course 2:</label>
+        <select id="teacher2">
+            <option value="teacher1">harinath(Rating: 4.8, Projects: 7, Patents: 3)</option>
+            <option value="teacher2">swetha (Rating: 4.6, Projects: 4, Patents: 2)</option>
+        </select>
 
-# Feedback Model
-class Feedback(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    profile_id = db.Column(db.Integer, db.ForeignKey('teacher_profile.id'), nullable=False)
-    comments = db.Column(db.String(500), nullable=False)
-    rating = db.Column(db.Integer, nullable=False)
+        <!-- Add more teacher selection fields as required -->
 
-# StudentCourse Model (Junction table for Student and Course)
-class StudentCourse(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('teacher.id'), nullable=False)
+        <!-- Submit Button -->
+        <button class="button" id="submit-selection">Submit Selections</button>
+    </div>
 
-# Function to hash password
-def hash_password(password):
-    return bcrypt.generate_password_hash(password).decode('utf-8')
+    <!-- Teacher Profile Section -->
+    <div class="teacher-profile-section">
+        <h2>Teacher Profiles</h2>
 
-# Example Endpoint to register a user
-@app.route('/register', methods=['POST'])
-def register():
-    data = request.get_json()
-    username = data['username']
-    password = data['password']
-    role = data['role']
-    
-    # Hash the password and create a new user
-    hashed_password = hash_password(password)
-    new_user = User(username=username, password=hashed_password, role=role)
-    
-    db.session.add(new_user)
-    db.session.commit()
-    
-    return jsonify({"message": f"User {username} registered successfully!"}), 201
+        <!-- Example of a Teacher Profile -->
+        <div class="teacher-profile">
+            <h3>ravikanth</h3>
+            <p><strong>Rating:</strong> <span class="rating">4.5</span></p>
+            <p><strong>Research Projects:</strong> 5</p>
+            <p><strong>Patents:</strong> 2</p>
+            <p><strong>Academic Background:</strong> PhD in Computer Science, MIT</p>
+            <button class="button" id="details.html">View More</button>
+        </div>
 
-# Example Endpoint to login and get JWT token
-@app.route('/login', methods=['POST'])
-def login():
-    data = request.get_json()
-    username = data['username']
-    password = data['password']
-    
-    user = User.query.filter_by(username=username).first()
-    
-    # Check if user exists and the password is correct
-    if user and bcrypt.check_password_hash(user.password, password):
-        access_token = create_access_token(identity=user.id)
-        return jsonify(access_token=access_token), 200
-    else:
-        return jsonify({"error": "Invalid credentials!"}), 401
-@app.route('/')  
-def home():
-    return "welcome to the course selection and teacher assignment system!"
-# Initialize the database
-@app.before_request
-def create_tables():
-    db.create_all()
-if __name__=="__main__":
-    app.run(debug=True)
-@app.route('/select_courses', methods=['POST'])
-@jwt_required()
-def select_courses():
-    student_id = get_jwt_identity()
-    data = request.get_json()
-    
-    course_ids = data['course_ids']  # List of selected course IDs
-    teacher_ids = data['teacher_ids']  # List of corresponding selected teacher IDs
-    
-    if len(course_ids) != 6 or len(teacher_ids) != 6:
-        return jsonify({"error": "You must select exactly 4 theory and 2 lab courses!"}), 400
-    
-    for i, course_id in enumerate(course_ids):
-        course = Course.query.get(course_id)
-        teacher = Teacher.query.get(teacher_ids[i])
-        
-        if not course or not teacher:
-            return jsonify({"error": "Invalid course or teacher selected!"}), 400
-        
-        new_selection = StudentCourse(student_id=student_id, course_id=course_id, teacher_id=teacher_ids[i])
-        db.session.add(new_selection)
-    
-    db.session.commit()
-    
-    return jsonify({"message": "Courses selected successfully!"})
-@app.route('/teacher/<int:teacher_id>', methods=['GET'])
-def get_teacher_profile(teacher_id):
-    teacher = Teacher.query.get(teacher_id)
-    if not teacher:
-        return jsonify({"error": "Teacher not found!"}), 404
-    
-    # Get past 4 years ratings
-    profiles = TeacherProfile.query.filter_by(teacher_id=teacher_id).order_by(TeacherProfile.year.desc()).limit(4).all()
-    ratings = [{"year": p.year, "rating": p.rating} for p in profiles]
-    
-    return jsonify({
-        "name": teacher.name,
-        "research_projects": teacher.research_projects,
-        "patents": teacher.patents,
-        "academic_background": teacher.academic_background,
-        "ratings": ratings
-    })  
-@app.route('/teacher/<int:teacher_id>', methods=['GET'])
-def get_teacher_profile(teacher_id):
-    teacher = Teacher.query.get(teacher_id)
-    if not teacher:
-        return jsonify({"error": "Teacher not found!"}), 404
-    
-    # Get past 4 years ratings
-    profiles = TeacherProfile.query.filter_by(teacher_id=teacher_id).order_by(TeacherProfile.year.desc()).limit(4).all()
-    ratings = [{"year": p.year, "rating": p.rating} for p in profiles]
-    
-    return jsonify({
-        "name": teacher.name,
-        "research_projects": teacher.research_projects,
-        "patents": teacher.patents,
-        "academic_background": teacher.academic_background,
-        "ratings": ratings
-    })      
+        <!-- Add more teacher profiles as needed -->
+    </div>
+
+    <!-- Feedback Section -->
+    <div class="feedback-section">
+        <h2>Submit Feedback for a Teacher</h2>
+        <label for="teacher-feedback">Select a Teacher:</label>
+        <select id="teacher-feedback">
+            <option value="teacher1">ravikanth</option>
+            <option value="teacher2">naveen</option>
+            <!-- Add more teachers -->
+        </select>
+
+        <label for="feedback-text">Your Feedback:</label>
+        <textarea id="feedback-text" rows="5" placeholder="Write your feedback here..."></textarea>
+
+        <!-- Submit Feedback Button -->
+        <button class="button" id="submit-feedback">Submit Feedback</button>
+    </div>
+</div>
+
+<!-- Add JavaScript here for form validation, interaction, and dynamic updates -->
+<script>
+    document.getElementById("submit-selection").addEventListener("click", function() {
+        alert("Course selections submitted successfully!");
+        // Add AJAX or backend form submission logic
+    });
+
+    document.getElementById("submit-feedback").addEventListener("click", function() {
+        alert("Feedback submitted successfully!");
+        // Add AJAX or backend form submission logic
+    });
+</script>
+
+</body>
+</html>
